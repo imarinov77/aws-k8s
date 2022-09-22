@@ -1,0 +1,169 @@
+- hosts: all
+  become: true
+  tasks:
+   # - name: Update and upgrade apt packages
+   #   apt:
+   #     upgrade: yes
+   #     update_cache: yes
+
+    - name: Install required system packages
+      apt: 
+        name: "{{ item }}"
+        state: latest 
+        update_cache: yes
+      loop: [ 'apt-transport-https', 
+              'bash-completion', 
+              'software-properties-common', 
+              'mc',
+              'vim']
+
+    - name: Add kernel modules
+      modprobe:
+        name: "{{ item }}"
+        state: present
+      loop: ['overlay','br_netfilter']
+
+    - name: Copy cri.conf
+      copy:
+        src: 99-kubernetes-cri.conf
+        dest: /etc/sysctl.d/99-kubernetes-cri.conf
+        owner: root
+
+    - name: Apply new config file
+      shell: "sysctl --system"
+      register: sysctl_output
+    
+    - debug:
+       msg: "{{ sysctl_output }}"
+    
+    - name: Add cri-o,libcontainer,k8s apt gpg keys
+      apt_key:
+        url: "{{ item }}"
+        state: present
+      loop:
+        - 'https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/1.24/xUbuntu_20.04/Release.key'
+        - 'https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_20.04/Release.key'
+        - 'https://packages.cloud.google.com/apt/doc/apt-key.gpg'
+
+    - name: Add cri-o,libcontainer,k8s repositories
+      apt_repository:
+        repo: "{{ item }}"
+        state: present
+      loop:
+        - 'deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_20.04/ /'
+        - 'deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/1.24/xUbuntu_20.04/ /'
+        - 'deb http://apt.kubernetes.io/ kubernetes-xenial main'
+
+    - name: Update apt and install cri-o and cri-o-runc
+      apt: 
+        update_cache: yes 
+        name: "{{ item }}"
+        state: latest
+      loop: ['cri-o','cri-o-runc']
+
+    - name: Start crio
+      service:
+        name: crio
+        state: started
+
+    - name: Enable cri-o
+      service:
+        name: crio
+        enabled: yes
+
+    - name: Update apt and install k8s
+      apt: 
+        update_cache: yes 
+        name: "{{ item }}"
+        state: present
+        force: yes
+      loop: ['kubeadm=1.22.1-00','kubelet=1.22.1-00','kubectl=1.22.1-00']
+    
+    - name: Configure master node
+      block:
+        - name: Update hosts file
+          lineinfile:
+            dest: /etc/hosts
+            line: "{{ ansible_default_ipv4.address }} k8s-master"
+            state: present
+     
+        - name: Set a hostname
+          hostname:
+            name: k8s-master.aws
+            use: systemd
+    
+        - name: Copy kubeadm-config and kubeadm-crio
+          copy:
+            src: "{{ item }}"
+            dest: /root
+            owner: root
+          loop: ['kubeadm-config.yaml','kubeadm-crio.yaml']
+
+        - name: Initializing master
+          shell: kubeadm init --config=/root/kubeadm-config.yaml --upload-certs | tee /root/kubeadm-init.out 
+          register: kubeadm_output
+
+        - debug:
+            msg: "{{ kubeadm_output }}"
+
+        - name: Create a directory if it does not exist
+          file:
+            path: /home/ubuntu/.kube
+            state: directory
+            owner: ubuntu
+
+        - name: Copy kubectl config
+          copy:
+            src:  /etc/kubernetes/admin.conf 
+            dest: /home/ubuntu/.kube/config
+            owner: ubuntu
+            remote_src: yes
+
+        - name: Set kubectl bash-completion
+          shell: echo 'source <(kubectl completion bash)' >>/home/ubuntu/.bashrc    
+
+        - name: Install calico 
+          shell: kubectl apply -f https://projectcalico.docs.tigera.io/manifests/calico-typha.yaml
+          become_user: ubuntu
+      when: inventory_hostname == 'k8s-master'
+
+    - name: Generate token from master
+      shell: kubeadm token create
+      delegate_to: k8s-master
+      run_once: true
+      register: token
+        
+    - name: Get cert hash
+      shell: openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst \-sha256 -hex | sed 's/^.* //'
+      delegate_to: k8s-master
+      run_once: true
+      register: hash
+
+    - name: Configure worker nodes
+      block:
+        - name: Update hosts file
+          lineinfile:
+            dest: /etc/hosts
+            line: "{{ ansible_default_ipv4.address }} {{ inventory_hostname }}"
+            state: present
+  
+        - name: Update hosts file - add master
+          lineinfile:
+            dest: /etc/hosts
+            line: "{{ hostvars['k8s-master']['ansible_default_ipv4']['address'] }} k8s-master"
+            state: present
+     
+        - name: Set a hostname
+          hostname:
+            name: "{{ inventory_hostname }}.aws"
+            use: systemd
+
+        - name: Join cluster
+          shell: 'kubeadm join --token "{{ token.stdout }}" k8s-master:6443  --discovery-token-ca-cert-hash sha256:"{{ hash.stdout }}"'
+          register: join_cluster_output
+
+        - debug:
+           msg: "{{ join_cluster_output }}"
+      when: inventory_hostname in groups['k8s-worker']
+     
+    
