@@ -14,7 +14,7 @@ resource "aws_instance" "k8s-master" {
 resource "aws_instance" "k8s-worker" {
   ami           = var.amis[var.aws_region]
   count = 2
-  instance_type = "t2.micro"
+  instance_type = "t3.small"
   key_name = "aws-key"
   vpc_security_group_ids = [aws_security_group.k8s.id]
   root_block_device {
