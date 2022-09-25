@@ -1,91 +1,132 @@
-- hosts: all
+- hosts: all 
   become: true
   tasks:
-   # - name: Update and upgrade apt packages
-   #   apt:
-   #     upgrade: yes
-   #     update_cache: yes
-
-    - name: Install required system packages
-      apt: 
-        name: "{{ item }}"
-        state: latest 
-        update_cache: yes
-      loop: [ 'apt-transport-https', 
-              'bash-completion', 
-              'software-properties-common', 
-              'mc',
-              'vim']
-
-    - name: Add kernel modules
-      modprobe:
-        name: "{{ item }}"
-        state: present
-      loop: ['overlay','br_netfilter']
-
-    - name: Copy cri.conf
-      copy:
-        src: 99-kubernetes-cri.conf
-        dest: /etc/sysctl.d/99-kubernetes-cri.conf
-        owner: root
-
-    - name: Apply new config file
-      shell: "sysctl --system"
-      register: sysctl_output
+    #- name: Update and upgrade apt packages
+    #  apt:
+    #    upgrade: yes
+    #    update_cache: yes
     
-    - debug:
-       msg: "{{ sysctl_output }}"
-    
-    - name: Add cri-o,libcontainer,k8s apt gpg keys
-      apt_key:
-        url: "{{ item }}"
-        state: present
-      loop:
-        - 'https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/1.24/xUbuntu_20.04/Release.key'
-        - 'https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_20.04/Release.key'
-        - 'https://packages.cloud.google.com/apt/doc/apt-key.gpg'
+    - name: Create data dir for nfs
+      file:
+        path: /data
+        state: directory
 
-    - name: Add cri-o,libcontainer,k8s repositories
-      apt_repository:
-        repo: "{{ item }}"
-        state: present
-      loop:
-        - 'deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_20.04/ /'
-        - 'deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/1.24/xUbuntu_20.04/ /'
-        - 'deb http://apt.kubernetes.io/ kubernetes-xenial main'
+    - name: Configure nfs server
+      block:
+        - name: Install required system packages for nfs server
+          apt:
+            name: nfs-kernel-server
+            state: latest
+            update_cache: yes
+        
+        - name: Set a hostname
+          hostname:
+            name: k8s-nfs.aws
+            use: systemd
 
-    - name: Update apt and install cri-o and cri-o-runc
-      apt: 
-        update_cache: yes 
-        name: "{{ item }}"
-        state: latest
-      loop: ['cri-o','cri-o-runc']
+        - name: Add data dir to exports
+          lineinfile:
+            path: /etc/exports
+            state: present
+            line: "{{ item }}"
+          loop:
+            - '/data  *(rw,no_root_squash,no_subtree_check,insecure)' 
+        
+        - name: Restart nfs-kernel-server.service 
+          systemd:
+            daemon_reload: yes
+            state: restarted
+            name: nfs-kernel-server.service
+      when: inventory_hostname == 'k8s-nfs'
 
-    - name: Start crio
-      service:
-        name: crio
-        state: started
+    - name: Prepare k8s cluster nodes
+      block:
+        - name: Install required system packages
+          apt: 
+            name: "{{ item }}"
+            state: latest 
+            update_cache: yes
+          loop: [ 'apt-transport-https', 
+                  'bash-completion', 
+                  'software-properties-common', 
+                  'mc',
+                  'vim',
+                  'net-tools',
+                  'nfs-common']
 
-    - name: Enable cri-o
-      service:
-        name: crio
-        enabled: yes
+        - name: Add kernel modules
+          modprobe:
+            name: "{{ item }}"
+            state: present
+          loop: ['overlay','br_netfilter']
 
-    - name: Update apt and install k8s
-      apt: 
-        update_cache: yes 
-        name: "{{ item }}"
-        state: present
-        force: yes
-      loop: ['kubeadm=1.24.1-00','kubelet=1.24.1-00','kubectl=1.24.1-00']
-    
+        - name: Copy cri.conf
+          copy:
+            src: 99-kubernetes-cri.conf
+            dest: /etc/sysctl.d/99-kubernetes-cri.conf
+            owner: root
+
+        - name: Apply new config file
+          shell: "sysctl --system"
+          register: sysctl_output
+        
+        - debug:
+            msg: "{{ sysctl_output }}"
+        
+        - name: Add cri-o,libcontainer,k8s apt gpg keys
+          apt_key:
+            url: "{{ item }}"
+            state: present
+          loop:
+            - 'https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/1.24/xUbuntu_20.04/Release.key'
+            - 'https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_20.04/Release.key'
+            - 'https://packages.cloud.google.com/apt/doc/apt-key.gpg'
+
+        - name: Add cri-o,libcontainer,k8s repositories
+          apt_repository:
+            repo: "{{ item }}"
+            state: present
+          loop:
+            - 'deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_20.04/ /'
+            - 'deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/1.24/xUbuntu_20.04/ /'
+            - 'deb http://apt.kubernetes.io/ kubernetes-xenial main'
+
+        - name: Update apt and install cri-o and cri-o-runc
+          apt: 
+            update_cache: yes 
+            name: "{{ item }}"
+            state: latest
+          loop: ['cri-o','cri-o-runc']
+
+        - name: Start crio
+          service:
+            name: crio
+            state: started
+
+        - name: Enable cri-o
+          service:
+            name: crio
+            enabled: yes
+
+        - name: Update apt and install k8s
+          apt: 
+            update_cache: yes 
+            name: "{{ item }}"
+            state: present
+            force: yes
+          loop: ['kubeadm=1.24.1-00','kubelet=1.24.1-00','kubectl=1.24.1-00']
+      when: inventory_hostname == 'k8s-master' or inventory_hostname in groups['k8s-worker']
+
     - name: Configure master node
       block:
         - name: Update hosts file
           lineinfile:
             dest: /etc/hosts
-            line: "{{ ansible_default_ipv4.address }} k8s-master"
+            line: "{{ item }}"
             state: present
+          loop:
+            - "{{ ansible_default_ipv4.address }} k8s-master"
+            - "{{ hostvars['k8s-nfs']['ansible_default_ipv4']['address'] }} k8s-nfs"
      
         - name: Set a hostname
           hostname:
@@ -125,6 +166,13 @@
         - name: Install calico 
           shell: kubectl apply -f https://projectcalico.docs.tigera.io/manifests/calico-typha.yaml
           become_user: ubuntu
+        
+        - name: mount nfs server 
+          mount:
+            src: k8s-nfs:/data
+            path: /data
+            fstype: nfs
+            state: mounted
       when: inventory_hostname == 'k8s-master'
 
     - name: Generate token from master
@@ -141,17 +189,15 @@
 
     - name: Configure worker nodes
       block:
-        - name: Update hosts file
+        - name: Update hosts file - add master and nfs server
           lineinfile:
             dest: /etc/hosts
-            line: "{{ ansible_default_ipv4.address }} {{ inventory_hostname }}"
+            line: "{{ item }}"
             state: present
-  
-        - name: Update hosts file - add master
-          lineinfile:
-            dest: /etc/hosts
-            line: "{{ hostvars['k8s-master']['ansible_default_ipv4']['address'] }} k8s-master"
-            state: present
+          loop:
+            - "{{ hostvars['k8s-master']['ansible_default_ipv4']['address'] }} k8s-master"
+            - "{{ hostvars['k8s-nfs']['ansible_default_ipv4']['address'] }} k8s-nfs"
+            - "{{ ansible_default_ipv4.address }} {{ inventory_hostname }}"
      
         - name: Set a hostname
           hostname:
@@ -164,6 +210,15 @@
 
         - debug:
            msg: "{{ join_cluster_output }}"
+        
+        - name: mount nfs server 
+          mount:
+            src: k8s-nfs:/data
+            path: /data
+            fstype: nfs
+            state: mounted
       when: inventory_hostname in groups['k8s-worker']
      
-    
+
+
+   
