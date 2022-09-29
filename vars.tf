@@ -24,3 +24,6 @@ variable "linux_user" {
   default = "ubuntu"
 }
 
+variable "k8s_workers" {
+  default = 2
+}

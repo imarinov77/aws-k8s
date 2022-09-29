@@ -26,7 +26,7 @@ resource "aws_instance" "k8s-nfs" {
 
 resource "aws_instance" "k8s-worker" {
   ami           = var.amis[var.aws_region]
-  count = 2
+  count = var.k8s_workers
   instance_type = "t3.small"
   key_name = "aws-key"
   vpc_security_group_ids = [aws_security_group.k8s.id]
