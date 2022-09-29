@@ -1,0 +1,43 @@
+1. Install ingress controler nginx using helm chart 
+
+    https://docs.nginx.com/nginx-ingress-controller/installation/installation-with-helm/
+    
+2. Create deploymnet 
+    
+    deployment-ingress.yaml
+
+3. Create service for the deployment
+    
+    svc-ingress.yaml
+
+4. Create ingress
+    
+    ingress.yaml
+
+5. Test 
+
+    curl -H "Host: www.external.com" {{ ip address of nginx ingress service }}
+
+
+
+TLS
+
+1. Generate self-sign certificate
+
+    openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -days 365 --nodes
+
+    encode in base64 the content of cert.pem and key.pem 
+
+    update secret-ingress.yaml with encoded data
+
+2. Create secret 
+
+   secret-tls.yaml
+
+3. Create ingress 
+
+   ingress-tls.yaml
+
+4. Test
+
+ 	
