@@ -1,3 +1,5 @@
+update secret.tf with your access_key and secret 
+
 terraform init
 
 teraform apply

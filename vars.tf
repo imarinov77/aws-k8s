@@ -2,14 +2,6 @@ variable "aws_region" {
   default = "eu-central-1"
 }
 
-variable "access_key" {
-  default = "AKIASSXFGXBRTWS77H5J"
-}
-
-variable "secret_key" {
-  default = "pTTas3uoEAASF/kKxfIFprn61sco5zwJcw7Ffrfr"
-}
-
 variable "amis" {
   type = map(string)
   default = {
