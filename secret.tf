@@ -1,8 +1,8 @@
-variable "access_key" {
-  default = "{{ put_your_key }}"
-}
+#variable "access_key" {
+#  default = "{{ put_your_key }}"
+#}
 
-variable "secret_key" {
-  default = "{{put_your_secret}}"
-}
+#variable "secret_key" {
+#  default = "{{put_your_secret}}"
+#}
 
