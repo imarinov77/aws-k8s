@@ -1,5 +1,5 @@
 .terraform*
 /terraform.tfstate*
 hosts
-secret.tf
+secret-my.tf
 
