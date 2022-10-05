@@ -1,4 +1,4 @@
-update secret.tf with your access_key and secret adn uncomment lines
+update secret.tf with your access_key and secret and uncomment lines
 
 terraform init
 
