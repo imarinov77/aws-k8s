@@ -39,7 +39,7 @@
             name: nfs-kernel-server.service
         
         #Extra tmp task for eks manage
-        - shell: 'sudo curl -fsSLo /usr/share/keyrings/kubernetes-archive-keyring.gpg https://packages.cloud.google.com/apt/doc/apt-key.gpg && echo "deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list && sudo apt-get update -y && sudo apt-get install -y kubectl=1.23.1-00 && curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" && sudo apt-get install unzip -y && unzip awscliv2.zip && sudo ./aws/install' 
+        #- shell: 'sudo curl -fsSLo /usr/share/keyrings/kubernetes-archive-keyring.gpg https://packages.cloud.google.com/apt/doc/apt-key.gpg && echo "deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list && sudo apt-get update -y && sudo apt-get install -y kubectl=1.23.1-00 && curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" && sudo apt-get install unzip -y && unzip awscliv2.zip && sudo ./aws/install' 
         
       when: inventory_hostname == 'k8s-nfs'
 
@@ -57,7 +57,13 @@
                   'vim',
                   'net-tools',
                   'nfs-common']
-
+       
+        - name: Stop ufw
+          systemd:
+            name: ufw
+            enabled: no
+            state:   stopped
+ 
         - name: Add kernel modules
           modprobe:
             name: "{{ item }}"
@@ -82,7 +88,7 @@
             url: "{{ item }}"
             state: present
           loop:
-            - 'https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/1.24/xUbuntu_20.04/Release.key'
+            - 'https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/1.25/xUbuntu_20.04/Release.key'
             - 'https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_20.04/Release.key'
             - 'https://packages.cloud.google.com/apt/doc/apt-key.gpg'
 
@@ -92,7 +98,7 @@
             state: present
           loop:
             - 'deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_20.04/ /'
-            - 'deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/1.24/xUbuntu_20.04/ /'
+            - 'deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/1.25/xUbuntu_20.04/ /'
             - 'deb http://apt.kubernetes.io/ kubernetes-xenial main'
 
         - name: Update apt and install cri-o and cri-o-runc
