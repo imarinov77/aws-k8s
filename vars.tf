@@ -1,21 +1,26 @@
 variable "aws_region" {
-  default = "eu-central-1"
+  type        = string
+  default     = "eu-central-1"
+  description = "AWS region"
 }
 
 variable "amis" {
   type = map(string)
   default = {
-    us-east-1 = "ami-13be557e"
-    us-west-2 = "ami-06b94666"
-    eu-west-1 = "ami-844e0bf7"
-    eu-central-1 = "ami-0d527b8c289b4af7f"
+    us-west-2    = "ami-008fe2fc65df48dac"
+    eu-central-1 = "ami-0faab6bdbac9486fb"
   }
+  description = "AMIs by region"
 }
 
 variable "linux_user" {
-  default = "ubuntu"
+  type        = string
+  default     = "ubuntu"
+  description = "linux user"
 }
 
 variable "k8s_workers" {
-  default = 2
+  type        = number
+  default     = 2
+  description = "k8s workers count"
 }

@@ -1,0 +1,57 @@
+name: terraform-run
+on:
+  push:
+    branches: 
+      - master
+    paths:
+      - '**.tf'
+  pull_request:
+    branches:
+      - master
+    paths:
+      - '**.tf'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  terraform-check:
+    runs-on: [ 'ubuntu-latest' ]
+    defaults:
+      run: 
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Setup terraform 
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6.6"
+
+      - name: Terraform init 
+        run: terraform init
+
+      - name: Terraform valiadate 
+        run: terraform validate
+
+      - name: Setup tflint
+        uses: terraform-linters/setup-tflint@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          tflint_version: latest
+      
+      - name: Run TFLint
+        run: |
+          tflint --init -c ${{ github.workspace}}/.tflint.hcl 
+          tflint -f compact -c ${{ github.workspace}}/.tflint.hcl --var-file ${{ github.workspace}}/.github/lint/tflint.tfvars
+
+
+        
+  

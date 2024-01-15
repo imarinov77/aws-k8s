@@ -1,11 +1,14 @@
-- hosts: all 
+- hosts: all
   become: true
+  vars:
+    k8s_version: 1.28.2-00
+    calico_version: 3.27.0
   tasks:
     #- name: Update and upgrade apt packages
     #  apt:
     #    upgrade: yes
     #    update_cache: yes
-    
+
     - name: Configure nfs server
       block:
         - name: Install required system packages for nfs server
@@ -13,7 +16,7 @@
             name: nfs-kernel-server
             state: latest
             update_cache: yes
-        
+
         - name: Set a hostname
           hostname:
             name: k8s-nfs.aws
@@ -21,8 +24,8 @@
 
         - name: Create data dir for nfs
           file:
-           path: /data
-           state: directory
+            path: /data
+            state: directory
 
         - name: Add data dir to exports
           lineinfile:
@@ -30,45 +33,48 @@
             state: present
             line: "{{ item }}"
           loop:
-            - '/data  *(rw,no_root_squash,no_subtree_check,insecure)' 
-        
-        - name: Restart nfs-kernel-server.service 
+            - "/data  *(rw,no_root_squash,no_subtree_check,insecure)"
+
+        - name: Restart nfs-kernel-server.service
           systemd:
             daemon_reload: yes
             state: restarted
             name: nfs-kernel-server.service
-        
+
         #Extra tmp task for eks manage
-        #- shell: 'sudo curl -fsSLo /usr/share/keyrings/kubernetes-archive-keyring.gpg https://packages.cloud.google.com/apt/doc/apt-key.gpg && echo "deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list && sudo apt-get update -y && sudo apt-get install -y kubectl=1.23.1-00 && curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" && sudo apt-get install unzip -y && unzip awscliv2.zip && sudo ./aws/install' 
-        
+        #- shell: 'sudo curl -fsSLo /usr/share/keyrings/kubernetes-archive-keyring.gpg https://packages.cloud.google.com/apt/doc/apt-key.gpg && echo "deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list && sudo apt-get update -y && sudo apt-get install -y kubectl=1.23.1-00 && curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" && sudo apt-get install unzip -y && unzip awscliv2.zip && sudo ./aws/install'
+
       when: inventory_hostname == 'k8s-nfs'
 
     - name: Prepare k8s cluster nodes
       block:
         - name: Install required system packages
-          apt: 
+          apt:
             name: "{{ item }}"
-            state: latest 
+            state: latest
             update_cache: yes
-          loop: [ 'apt-transport-https', 
-                  'bash-completion', 
-                  'software-properties-common', 
-                  'mc',
-                  'vim',
-                  'net-tools',
-                  'nfs-common']
-       
+          loop:
+            [
+              "apt-transport-https",
+              "bash-completion",
+              "software-properties-common",
+              "mc",
+              "vim",
+              "net-tools",
+              "nfs-common",
+            ]
+
         - name: Stop ufw
           systemd:
             name: ufw
             enabled: no
-            state:   stopped
- 
+            state: stopped
+
         - name: Add kernel modules
           modprobe:
             name: "{{ item }}"
             state: present
-          loop: ['overlay','br_netfilter']
+          loop: ["overlay", "br_netfilter"]
 
         - name: Copy cri.conf
           copy:
@@ -79,34 +85,34 @@
         - name: Apply new config file
           shell: "sysctl --system"
           register: sysctl_output
-        
+
         - debug:
             msg: "{{ sysctl_output }}"
-        
+
         - name: Add cri-o,libcontainer,k8s apt gpg keys
           apt_key:
             url: "{{ item }}"
             state: present
           loop:
-            - 'https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/1.25/xUbuntu_20.04/Release.key'
-            - 'https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_20.04/Release.key'
-            - 'https://packages.cloud.google.com/apt/doc/apt-key.gpg'
+            - "https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/1.28/xUbuntu_22.04/Release.key"
+            - "https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_22.04/Release.key"
+            - "https://packages.cloud.google.com/apt/doc/apt-key.gpg"
 
         - name: Add cri-o,libcontainer,k8s repositories
           apt_repository:
             repo: "{{ item }}"
             state: present
           loop:
-            - 'deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_20.04/ /'
-            - 'deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/1.25/xUbuntu_20.04/ /'
-            - 'deb http://apt.kubernetes.io/ kubernetes-xenial main'
+            - "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_22.04/ /"
+            - "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/1.28/xUbuntu_22.04/ /"
+            - "deb http://apt.kubernetes.io/ kubernetes-xenial main"
 
         - name: Update apt and install cri-o and cri-o-runc
-          apt: 
-            update_cache: yes 
+          apt:
+            update_cache: yes
             name: "{{ item }}"
             state: latest
-          loop: ['cri-o','cri-o-runc']
+          loop: ["cri-o", "cri-o-runc"]
 
         - name: Start crio
           service:
@@ -119,12 +125,12 @@
             enabled: yes
 
         - name: Update apt and install k8s
-          apt: 
-            update_cache: yes 
-            name: "{{ item }}"
+          apt:
+            update_cache: yes
+            name: "{{ item }}={{ k8s_version }}"
             state: present
             force: yes
-          loop: ['kubeadm=1.24.1-00','kubelet=1.24.1-00','kubectl=1.24.1-00']
+          loop: ["kubeadm", "kubelet", "kubectl"]
       when: inventory_hostname == 'k8s-master' or inventory_hostname in groups['k8s-worker']
 
     - name: Configure master node
@@ -137,21 +143,21 @@
           loop:
             - "{{ ansible_default_ipv4.address }} k8s-master"
             - "{{ hostvars['k8s-nfs']['ansible_default_ipv4']['address'] }} k8s-nfs"
-     
+
         - name: Set a hostname
           hostname:
             name: k8s-master.aws
             use: systemd
-    
+
         - name: Copy kubeadm-config and kubeadm-crio
           copy:
             src: "{{ item }}"
             dest: /root
             owner: root
-          loop: ['kubeadm-config.yaml','kubeadm-crio.yaml']
+          loop: ["kubeadm-config.yaml"]
 
         - name: Initializing master
-          shell: kubeadm init --config=/root/kubeadm-config.yaml --upload-certs | tee /root/kubeadm-init.out 
+          shell: kubeadm init --config=/root/kubeadm-config.yaml --upload-certs | tee /root/kubeadm-init.out
           register: kubeadm_output
 
         - debug:
@@ -165,35 +171,53 @@
 
         - name: Copy kubectl config
           copy:
-            src:  /etc/kubernetes/admin.conf 
+            src: /etc/kubernetes/admin.conf
             dest: /home/ubuntu/.kube/config
             owner: ubuntu
             mode: 0600
             remote_src: yes
 
         - name: Set kubectl bash-completion
-          shell: echo 'source <(kubectl completion bash)' >>/home/ubuntu/.bashrc    
+          shell: echo 'source <(kubectl completion bash)' >>/home/ubuntu/.bashrc
 
-        - name: Install calico 
-          shell: kubectl apply -f https://projectcalico.docs.tigera.io/manifests/calico-typha.yaml
+        - name: Install calico
+          command: "{{ item }}"
+          loop:
+            - "kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v{{ calico_version }}/manifests/tigera-operator.yaml"
+            - "curl https://raw.githubusercontent.com/projectcalico/calico/v{{ calico_version }}/manifests/custom-resources.yaml -O"
+            - "kubectl create -f custom-resources.yaml"
           become_user: ubuntu
-       
+
         - name: Add helm gpg keys
           apt_key:
             url: "https://baltocdn.com/helm/signing.asc"
             state: present
-         
+
         - name: Add helm repo
           apt_repository:
             repo: "deb https://baltocdn.com/helm/stable/debian/ all main"
             state: present
-          
+
         - name: Update apt and install helm
-          apt: 
-            update_cache: yes 
+          apt:
+            update_cache: yes
             name: helm
             state: present
-  
+        
+        - name: Add kubectl alias to .bashrc
+          lineinfile:
+            path: ~/.bashrc
+            line: 'alias k=kubectl'
+            insertafter: EOF
+            state: present
+
+        - name: Add kubectl completion to .bashrc
+          lineinfile:
+            path: ~/.bashrc
+            line: 'complete -F __start_kubectl k'
+            insertafter: EOF
+            state: present
+
       when: inventory_hostname == 'k8s-master'
 
     - name: Generate token from master
@@ -201,7 +225,7 @@
       delegate_to: k8s-master
       run_once: true
       register: token
-        
+
     - name: Get cert hash
       shell: openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst \-sha256 -hex | sed 's/^.* //'
       delegate_to: k8s-master
@@ -219,7 +243,7 @@
             - "{{ hostvars['k8s-master']['ansible_default_ipv4']['address'] }} k8s-master"
             - "{{ hostvars['k8s-nfs']['ansible_default_ipv4']['address'] }} k8s-nfs"
             - "{{ ansible_default_ipv4.address }} {{ inventory_hostname }}"
-     
+
         - name: Set a hostname
           hostname:
             name: "{{ inventory_hostname }}.aws"
@@ -230,10 +254,6 @@
           register: join_cluster_output
 
         - debug:
-           msg: "{{ join_cluster_output }}"
-        
+            msg: "{{ join_cluster_output }}"
+
       when: inventory_hostname in groups['k8s-worker']
-     
-
-
-   
