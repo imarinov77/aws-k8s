@@ -3,4 +3,5 @@ terraform.tfstate
 terraform.tfstate.backup
 hosts
 secret-my.tf
+aws-key.pem
 
