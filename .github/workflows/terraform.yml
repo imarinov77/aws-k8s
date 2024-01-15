@@ -36,6 +36,9 @@ jobs:
           terraform_version: "1.6.6"
 
       - name: Terraform valiadate 
+        run: terraform init
+
+      - name: Terraform valiadate 
         run: terraform validate
 
       - name: Setup tflint
