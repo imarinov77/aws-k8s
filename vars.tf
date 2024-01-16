@@ -21,6 +21,6 @@ variable "linux_user" {
 
 variable "k8s_workers" {
   type        = number
-  default     = 3
+  default     = 2
   description = "k8s workers count"
 }
