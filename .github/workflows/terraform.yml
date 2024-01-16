@@ -1,4 +1,4 @@
-name: terraform-run
+name: terraform
 on:
   push:
     branches: 
@@ -22,6 +22,8 @@ jobs:
     defaults:
       run: 
         shell: bash
+    environment: 
+      name: aws
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,9 +38,11 @@ jobs:
           terraform_version: "1.6.6"
 
       - name: Terraform init 
+        id: init
         run: terraform init
 
-      - name: Terraform valiadate 
+      - name: Terraform valiadate
+        id: validate
         run: terraform validate
 
       - name: Setup tflint
@@ -46,11 +50,62 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           tflint_version: latest
+
+      - name: Terraform fmt
+        id: fmt
+        run: terraform fmt -check
+        continue-on-error: true
       
       - name: Run TFLint
+        id: tflint
         run: |
           tflint --init -c ${{ github.workspace}}/.tflint.hcl 
           tflint -f compact -c ${{ github.workspace}}/.tflint.hcl --var-file ${{ github.workspace}}/.github/lint/tflint.tfvars
+
+      - name: Terraform Plan
+        id: plan
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: terraform plan
+
+      - uses: actions/github-script@v6
+        if: github.event_name == 'pull_request'
+        env:
+          PLAN: "terraform\n${{ steps.plan.outputs.stdout }}"
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const output = `#### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
+            #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
+            #### Terraform Validation 🤖\`${{ steps.validate.outcome }}\`
+            #### TFLint Result ✅  \`${{ steps.tflint.outcome }}\`
+            <details><summary>Validation Output</summary>
+      
+            \`\`\`\n
+            ${{ steps.validate.outputs.stdout }}
+            \`\`\`
+      
+            </details>
+      
+            #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
+      
+            <details><summary>Show Plan</summary>
+      
+            \`\`\`\n
+            ${process.env.PLAN}
+            \`\`\`
+      
+            </details>
+      
+            *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\` , Workflow: \`${{ github.workflow }}\`*`;
+      
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
 
 
         
