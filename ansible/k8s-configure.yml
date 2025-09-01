@@ -1,7 +1,8 @@
 - hosts: all
   become: true
   vars:
-    k8s_version: 1.28.2-00
+    k8s_version: 1.32
+    crio_version: 1.28
     cilium_version: 1.15.1
   tasks:
     #- name: Update and upgrade apt packages
@@ -89,30 +90,56 @@
         - debug:
             msg: "{{ sysctl_output }}"
 
-        - name: Add cri-o,libcontainer,k8s apt gpg keys
-          apt_key:
-            url: "{{ item }}"
-            state: present
-          loop:
-            - "https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/1.28/xUbuntu_22.04/Release.key"
-            - "https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_22.04/Release.key"
-            - "https://packages.cloud.google.com/apt/doc/apt-key.gpg"
+        - name: Ensure keyrings directory exists
+          file:
+            path: /usr/share/keyrings
+            state: directory
+            mode: '0755'
 
-        - name: Add cri-o,libcontainer,k8s repositories
-          apt_repository:
-            repo: "{{ item }}"
-            state: present
-          loop:
-            - "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_22.04/ /"
-            - "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/1.28/xUbuntu_22.04/ /"
-            - "deb http://apt.kubernetes.io/ kubernetes-xenial main"
+        - name: Ensure keyrings directory exists
+          file:
+            path: /etc/apt/keyrings
+            state: directory
+            mode: '0755'
 
-        - name: Update apt and install cri-o and cri-o-runc
-          apt:
+        - name: Download and dearmor Kubernetes GPG key
+          ansible.builtin.shell: |
+            curl -fsSL https://pkgs.k8s.io/core:/stable:/v{{ k8s_version}}/deb/Release.key \
+              | gpg --dearmor  --yes -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+          args:
+            executable: /bin/bash
+
+        - name: Add Kubernetes APT repository
+          ansible.builtin.apt_repository:
+            repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v{{ k8s_version}}/deb/ /"
+            filename: kubernetes
+            state: present
+
+        - name: Download and dearmor CRI-O GPG key
+          ansible.builtin.shell: |
+            curl -fsSL https://download.opensuse.org/repositories/isv:/cri-o:/stable:/v{{ crio_version }}/deb/Release.key \
+              | gpg --dearmor  --yes -o /etc/apt/keyrings/cri-o-apt-keyring.gpg
+          args:
+            executable: /bin/bash
+
+        - name: Add CRI-O APT repository
+          ansible.builtin.apt_repository:
+            repo: "deb [signed-by=/etc/apt/keyrings/cri-o-apt-keyring.gpg] https://download.opensuse.org/repositories/isv:/cri-o:/stable:/v{{ crio_version }}/deb/ /"
+            filename: cri-o
+            state: present
+
+        - name: Update APT cache
+          ansible.builtin.apt:
             update_cache: yes
-            name: "{{ item }}"
+
+        - name: Install CRI-O and Kubernetes packages
+          ansible.builtin.apt:
+            name:
+              - cri-o
+              - kubelet
+              - kubeadm
+              - kubectl
             state: latest
-          loop: ["cri-o", "cri-o-runc"]
 
         - name: Start crio
           service:
@@ -127,7 +154,7 @@
         - name: Update apt and install k8s
           apt:
             update_cache: yes
-            name: "{{ item }}={{ k8s_version }}"
+            name: "{{ item }}"
             state: present
             force: yes
           loop: ["kubeadm", "kubelet", "kubectl"]
